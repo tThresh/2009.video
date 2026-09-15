@@ -162,17 +162,22 @@ function captureSourceFrame(video) {
 }
 
 // ---------- setting <-> quality mapping ----------
-// Single source of truth for what a slider position means, shared between
-// the live preview and the values sent to the server for the real encode.
+// Resolution stays FIXED here — the quality slider only throttles bitrate,
+// which is what actually makes video look bad (blocking, banding, grain).
 function lerp(t, a, b) {
   return a + (b - a) * t;
 }
 
+function clampNum(v, min, max) {
+  return Math.min(max, Math.max(min, v));
+}
+
+const ENCODE_W = 640; // encode at source-ish resolution, not shrunk down
+
 function videoSettingsFromQuality(q) {
   const t = (q - 1) / 9; // 0..1
-  const width = Math.round(lerp(t, 120, 480) / 2) * 2; // keep even
-  const bitrateKbps = Math.round(lerp(t, 80, 1200));
-  return { width, bitrateKbps };
+  const bitrateKbps = Math.round(lerp(t, 140, 2000));
+  return { width: ENCODE_W, bitrateKbps };
 }
 
 function audioSettingsFromQuality(q) {
@@ -199,31 +204,32 @@ function renderPreview() {
 
   const vq = parseInt(videoQSlider.value, 10);
   const aq = parseInt(audioQSlider.value, 10);
-  const { width: encodeWidth, bitrateKbps } = videoSettingsFromQuality(vq);
+  const { bitrateKbps } = videoSettingsFromQuality(vq);
   const aspect = sourceCanvas.height / sourceCanvas.width;
-  const tinyW = Math.max(20, encodeWidth);
-  const tinyH = Math.max(15, Math.round(tinyW * aspect));
+  const good = (vq - 1) / 9; // 0 = worst, 1 = best
+  const bad = 1 - good;
 
-  // Step 1: downsample to the "encode resolution" with a flattened,
-  // slightly desaturated color grade, approximating the ffmpeg eq filter.
+  // Step 1: render the frame at the encode resolution. We keep it at full
+  // resolution — the ugliness has to come from codec artifacts below, not
+  // from shrinking the picture.
   const tiny = document.createElement("canvas");
-  tiny.width = tinyW;
-  tiny.height = tinyH;
+  tiny.width = ENCODE_W;
+  tiny.height = Math.round(ENCODE_W * aspect);
   const tctx = tiny.getContext("2d");
   tctx.filter = "saturate(85%) contrast(108%) brightness(102%)";
-  tctx.drawImage(sourceCanvas, 0, 0, tinyW, tinyH);
+  tctx.drawImage(sourceCanvas, 0, 0, tiny.width, tiny.height);
 
-  // Step 2: blow it back up with no smoothing, so the resolution loss
-  // reads as visible blockiness, same as a low-res video stretched to
-  // fill a player.
+  // Step 2: pop it on the preview at full size with no smoothing. The
+  // resolution doesn't change, so the "bad quality" has to be real.
   const pctx = previewCanvas.getContext("2d");
   pctx.imageSmoothingEnabled = false;
   pctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
-  pctx.drawImage(tiny, 0, 0, tinyW, tinyH, 0, 0, previewCanvas.width, previewCanvas.height);
+  pctx.drawImage(tiny, 0, 0, tiny.width, tiny.height, 0, 0, previewCanvas.width, previewCanvas.height);
 
-  // Step 3: grain + banding, both scaled inversely with bitrate — a
-  // starved bitrate means more visible noise and posterization.
-  applyArtifacts(pctx, previewCanvas.width, previewCanvas.height, bitrateKbps);
+  // Step 3: codec-style degradation, scaled with quality. Heavy block
+  // artifacts at the low end, banding + grain everywhere below full quality.
+  if (bad > 0.02) applyMacroblocking(pctx, previewCanvas.width, previewCanvas.height, bad);
+  applyArtifacts(pctx, previewCanvas.width, previewCanvas.height, good);
 
   // ---- update labels ----
   const fps = parseInt(fpsSlider.value, 10);
@@ -231,19 +237,64 @@ function renderPreview() {
 
   fpsValue.textContent = `${fps} fps`;
   videoQValue.textContent = `${vq} / 10`;
-  videoQSub.textContent = `${encodeWidth}×${Math.round(encodeWidth * aspect)} · ~${bitrateKbps}kbps`;
+  videoQSub.textContent = `~${bitrateKbps}kbps · ${levelWord(good)}`;
   audioQValue.textContent = `${aq} / 10`;
   audioQSub.textContent = `${audio.channels === 1 ? "mono" : "stereo"} · ${audio.bitrateKbps}kbps · ${(audio.sampleRate / 1000).toFixed(2)}kHz`;
-  previewTag.textContent = `${encodeWidth}×${Math.round(encodeWidth * aspect)} · ${bitrateKbps}kbps`;
+  previewTag.textContent = `~${bitrateKbps}kbps · ${levelWord(good)}`;
 }
 
-function applyArtifacts(ctx, w, h, bitrateKbps) {
+function levelWord(bad) {
+  if (bad > 0.8) return "brutal";
+  if (bad > 0.6) return "awful";
+  if (bad > 0.4) return "rough";
+  if (bad > 0.2) return "meh";
+  return "fine";
+}
+
+// Faux-H.264 macroblocking: the frame gets chopped into a grid and each cell
+// is crushed to a quantized color, exactly like a starved encoder's blocks.
+function applyMacroblocking(ctx, w, h, bad) {
+  const src = ctx.getImageData(0, 0, w, h).data;
+  const out = ctx.createImageData(w, h);
+  const od = out.data;
+
+  const bs = Math.max(5, Math.round(lerp(bad, 6, 28))); // bigger blocks when worse
+  const step = Math.max(2, Math.round(lerp(bad, 32, 10))); // fewer color levels when worse
+
+  for (let y = 0; y < h; y += bs) {
+    for (let x = 0; x < w; x += bs) {
+      const X = Math.min(x + bs, w);
+      const Y = Math.min(y + bs, h);
+
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let yy = y; yy < Y; yy++) {
+        for (let xx = x; xx < X; xx++) {
+          const i = (yy * w + xx) * 4;
+          r += src[i]; g += src[i + 1]; b += src[i + 2]; n++;
+        }
+      }
+      r = (Math.round((r / n) / step) * step) & 255;
+      g = (Math.round((g / n) / step) * step) & 255;
+      b = (Math.round((b / n) / step) * step) & 255;
+
+      for (let yy = y; yy < Y; yy++) {
+        for (let xx = x; xx < X; xx++) {
+          const i = (yy * w + xx) * 4;
+          od[i] = r; od[i + 1] = g; od[i + 2] = b; od[i + 3] = 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+}
+
+function applyArtifacts(ctx, w, h, good) {
   const imgData = ctx.getImageData(0, 0, w, h);
   const d = imgData.data;
 
-  // Lower bitrate -> more grain, fewer color levels (banding).
-  const noiseAmt = clampNum(lerp((1200 - bitrateKbps) / (1200 - 80), 6, 42), 6, 42);
-  const levels = clampNum(lerp((bitrateKbps - 80) / (1200 - 80), 6, 40), 6, 40);
+  // Lower quality -> more grain and fewer color levels (banding).
+  const noiseAmt = clampNum(lerp(good, 40, 4), 3, 40);
+  const levels = clampNum(lerp(good, 5, 34), 3, 34);
   const step = 256 / levels;
 
   for (let i = 0; i < d.length; i += 4) {
@@ -255,10 +306,6 @@ function applyArtifacts(ctx, w, h, bitrateKbps) {
     }
   }
   ctx.putImageData(imgData, 0, 0);
-}
-
-function clampNum(v, min, max) {
-  return Math.min(max, Math.max(min, v));
 }
 
 [fpsSlider, videoQSlider, audioQSlider].forEach((el) => {
@@ -273,6 +320,8 @@ compressBtn.addEventListener("click", () => {
 
 async function startCompression(file) {
   showConfigure(false);
+  previewCanvas.hidden = true;
+  previewTag.hidden = true;
   showState("processing");
   progressFill.style.width = "0%";
   progressPct.textContent = "0%";
