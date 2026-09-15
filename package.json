@@ -1,0 +1,19 @@
+{
+  "name": "2009.video",
+  "version": "1.0.0",
+  "description": "retro ahh video compressor",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "fluent-ffmpeg": "^2.1.2",
+    "ffmpeg-static": "^5.2.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

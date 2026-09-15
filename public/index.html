@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>2009.video</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<main class="wrap">
+
+  <header class="masthead">
+    <h1 class="title">2009.video</h1>
+  </header>
+
+  <section class="player" id="player">
+
+    <div class="player-chrome">
+      <span class="chrome-label" id="chromeLabel">no file loaded</span>
+    </div>
+
+    <div class="screen" id="dropzone">
+      <input type="file" id="fileInput" accept="video/*" hidden />
+
+      <canvas id="previewCanvas" class="screen-canvas" hidden></canvas>
+      <span class="preview-tag" id="previewTag" hidden>320×240 · 300kbps</span>
+
+      <div class="screen-idle" id="stateIdle">
+        <p class="screen-title">Drop a video here</p>
+        <p class="screen-sub">or click to browse</p>
+      </div>
+
+      <div class="screen-processing" id="stateProcessing" hidden>
+        <p class="screen-title" id="processingTitle">compressing<span class="dots">...</span></p>
+        <div class="bufferbar">
+          <div class="bufferbar-fill" id="progressFill"></div>
+        </div>
+        <p class="screen-sub" id="progressPct">0%</p>
+      </div>
+
+      <div class="screen-done" id="stateDone" hidden>
+        <p class="screen-title">Done.</p>
+        <a class="btn" id="downloadBtn" href="#" download>download</a>
+        <button class="btn btn-ghost" id="resetBtn" type="button">another video</button>
+      </div>
+
+      <div class="screen-error" id="stateError" hidden>
+        <p class="screen-title">Something went wrong</p>
+        <p class="screen-sub" id="errorMsg"></p>
+        <button class="btn btn-ghost" id="retryBtn" type="button">try again</button>
+      </div>
+    </div>
+
+    <div class="scrubber">
+      <div class="scrubber-track"><div class="scrubber-fill" id="scrubberFill"></div></div>
+    </div>
+  </section>
+
+  <!-- Settings + live preview, shown once a file is picked -->
+  <section class="configure" id="configurePanel" hidden>
+
+    <p class="preview-note">Preview approximates the look. Framerate affects motion, not shown in a still frame.</p>
+
+    <div class="settings">
+
+      <div class="setting-row">
+        <div class="setting-label">
+          <span>framerate</span>
+          <span class="setting-value" id="fpsValue">15 fps</span>
+        </div>
+        <input type="range" id="fpsSlider" min="5" max="30" step="1" value="15" />
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-label">
+          <span>video quality</span>
+          <span class="setting-value" id="videoQValue">3 / 10</span>
+        </div>
+        <input type="range" id="videoQSlider" min="1" max="10" step="1" value="3" />
+        <p class="setting-sub" id="videoQSub">320×240 · ~300kbps</p>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-label">
+          <span>audio quality</span>
+          <span class="setting-value" id="audioQValue">3 / 10</span>
+        </div>
+        <input type="range" id="audioQSlider" min="1" max="10" step="1" value="3" />
+        <p class="setting-sub" id="audioQSub">mono · 64kbps · 22.05kHz</p>
+      </div>
+
+    </div>
+
+    <div class="configure-actions">
+      <button class="btn" id="compressBtn" type="button">compress video</button>
+      <button class="btn btn-ghost" id="cancelBtn" type="button">cancel</button>
+    </div>
+  </section>
+
+</main>
+
+<video id="hiddenVideo" playsinline muted style="display:none"></video>
+
+<script src="app.js"></script>
+</body>
+</html>
