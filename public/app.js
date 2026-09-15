@@ -177,6 +177,15 @@ function captureSourceFrame(video) {
 // ---------- setting <-> quality mapping ----------
 // Resolution stays FIXED here — the quality slider only throttles bitrate,
 // which is what actually makes video look bad (blocking, banding, grain).
+//
+// These are deliberately non-linear. Bitrate is not a linear measure of
+// perceived quality: the low end is already starved, while extra bitrate at
+// the high end buys much more usable detail. The tiers also keep the labels
+// honest about the intended anchors: 140kbps is video 6/10 and 24kbps is
+// audio 4/10.
+const VIDEO_QUALITY_KBPS = [40, 60, 80, 100, 120, 140, 240, 400, 800, 2000];
+const AUDIO_QUALITY_KBPS = [16, 18, 20, 24, 32, 48, 64, 96, 128, 160];
+
 function lerp(t, a, b) {
   return a + (b - a) * t;
 }
@@ -195,14 +204,14 @@ function encodeWidthP() {
 }
 
 function videoSettingsFromQuality(q) {
-  const t = (q - 1) / 9; // 0..1
-  const bitrateKbps = Math.round(lerp(t, 140, 2000));
+  const index = clampNum(Math.round(q) - 1, 0, VIDEO_QUALITY_KBPS.length - 1);
+  const bitrateKbps = VIDEO_QUALITY_KBPS[index];
   return { width: encodeWidthP(), bitrateKbps };
 }
 
 function audioSettingsFromQuality(q) {
-  const t = (q - 1) / 9;
-  const bitrateKbps = Math.round(lerp(t, 24, 160));
+  const index = clampNum(Math.round(q) - 1, 0, AUDIO_QUALITY_KBPS.length - 1);
+  const bitrateKbps = AUDIO_QUALITY_KBPS[index];
   const sampleRate = q <= 3 ? 11025 : q <= 6 ? 22050 : 44100;
   const channels = q <= 5 ? 1 : 2;
   return { bitrateKbps, sampleRate, channels };
