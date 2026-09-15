@@ -10,6 +10,16 @@ const previewTag = document.getElementById("previewTag");
 
 const fpsSlider = document.getElementById("fpsSlider");
 const fpsValue = document.getElementById("fpsValue");
+const sizeOptions = document.getElementById("sizeOptions");
+let videoSize = 480; // active resolution (height px)
+const sizeBtns = [...sizeOptions.querySelectorAll(".size-btn")];
+sizeBtns.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    videoSize = parseInt(btn.dataset.size, 10);
+    sizeBtns.forEach((b) => b.classList.toggle("is-active", b === btn));
+    scheduleRender();
+  });
+});
 const videoQSlider = document.getElementById("videoQSlider");
 const videoQValue = document.getElementById("videoQValue");
 const videoQSub = document.getElementById("videoQSub");
@@ -19,6 +29,7 @@ const audioQSub = document.getElementById("audioQSub");
 
 const compressBtn = document.getElementById("compressBtn");
 const cancelBtn = document.getElementById("cancelBtn");
+const estimate = document.getElementById("estimate");
 
 const states = {
   idle: document.getElementById("stateIdle"),
@@ -35,6 +46,7 @@ const errorMsg = document.getElementById("errorMsg");
 let selectedFile = null;
 let sourceCanvas = null; // holds the captured frame at a reasonable working resolution
 let objectUrl = null;
+let videoDuration = 0; // seconds
 
 // ---------- state machine ----------
 function showState(name) {
@@ -110,6 +122,7 @@ async function handleFile(file) {
 
   try {
     await captureSourceFrame(hiddenVideo);
+    videoDuration = isFinite(hiddenVideo.duration) ? hiddenVideo.duration : 0;
     showConfigure(true);
     states.idle.hidden = true;
     previewCanvas.hidden = false;
@@ -139,7 +152,7 @@ function captureSourceFrame(video) {
     video.addEventListener(
       "seeked",
       () => {
-        const maxW = 640;
+        const maxW = 1600;
         const scale = Math.min(1, maxW / video.videoWidth);
         const w = Math.round(video.videoWidth * scale);
         const h = Math.round(video.videoHeight * scale);
@@ -172,12 +185,19 @@ function clampNum(v, min, max) {
   return Math.min(max, Math.max(min, v));
 }
 
-const ENCODE_W = 640; // encode at source-ish resolution, not shrunk down
+// Resolution slider gives a pixel height (240p..720p). Derive an even width
+// from the frame's aspect ratio so the server can scale to it.
+function encodeWidthP() {
+  const h = videoSize;
+  const aspect = sourceCanvas ? sourceCanvas.width / sourceCanvas.height : 16 / 9;
+  const w = Math.round(h * aspect);
+  return w % 2 === 0 ? w : w - 1;
+}
 
 function videoSettingsFromQuality(q) {
   const t = (q - 1) / 9; // 0..1
   const bitrateKbps = Math.round(lerp(t, 140, 2000));
-  return { width: ENCODE_W, bitrateKbps };
+  return { width: encodeWidthP(), bitrateKbps };
 }
 
 function audioSettingsFromQuality(q) {
@@ -204,7 +224,7 @@ function renderPreview() {
 
   const vq = parseInt(videoQSlider.value, 10);
   const aq = parseInt(audioQSlider.value, 10);
-  const { bitrateKbps } = videoSettingsFromQuality(vq);
+  const { width: encodeW, bitrateKbps } = videoSettingsFromQuality(vq);
   const aspect = sourceCanvas.height / sourceCanvas.width;
   const good = (vq - 1) / 9; // 0 = worst, 1 = best
   const bad = 1 - good;
@@ -213,8 +233,8 @@ function renderPreview() {
   // resolution — the ugliness has to come from codec artifacts below, not
   // from shrinking the picture.
   const tiny = document.createElement("canvas");
-  tiny.width = ENCODE_W;
-  tiny.height = Math.round(ENCODE_W * aspect);
+  tiny.width = encodeW;
+  tiny.height = Math.round(encodeW * aspect);
   const tctx = tiny.getContext("2d");
   tctx.filter = "saturate(85%) contrast(108%) brightness(102%)";
   tctx.drawImage(sourceCanvas, 0, 0, tiny.width, tiny.height);
@@ -241,6 +261,21 @@ function renderPreview() {
   audioQValue.textContent = `${aq} / 10`;
   audioQSub.textContent = `${audio.channels === 1 ? "mono" : "stereo"} · ${audio.bitrateKbps}kbps · ${(audio.sampleRate / 1000).toFixed(2)}kHz`;
   previewTag.textContent = `~${bitrateKbps}kbps · ${levelWord(good)}`;
+  estimate.textContent = `est. ${formatSize(estimatedBytes(bitrateKbps, audio.bitrateKbps, fps))}`;
+}
+
+function estimatedBytes(videoKbps, audioKbps, fps) {
+  // Overhead for the timebase + one-fewer frames than fps*duration.
+  const seconds = videoDuration || 0;
+  const frames = Math.max(0, Math.round(seconds * (fps || 1)) - 1);
+  const overhead = 256;
+  const bytes = Math.round(((videoKbps + audioKbps) * 1000 / 8) * seconds) - overhead * frames;
+  return Math.max(0, bytes);
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function levelWord(bad) {
