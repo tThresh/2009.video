@@ -206,6 +206,30 @@ body {
   font-size: 12px;
 }
 
+.size-options {
+  display: flex;
+  gap: 8px;
+}
+
+.size-btn {
+  flex: 1;
+  padding: 7px 0;
+  background: transparent;
+  color: var(--grey);
+  border: 1px solid var(--line);
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.size-btn:hover { color: var(--text); }
+
+.size-btn.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 .setting-sub {
   margin: 6px 0 0;
   font-family: "Courier New", monospace;
@@ -243,4 +267,11 @@ input[type="range"]::-moz-range-thumb {
   margin-top: 20px;
   display: flex;
   align-items: center;
+}
+
+.estimate {
+  margin-left: auto;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  color: var(--grey);
 }
