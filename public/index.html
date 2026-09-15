@@ -74,6 +74,18 @@
 
       <div class="setting-row">
         <div class="setting-label">
+          <span>video size</span>
+        </div>
+        <div class="size-options" id="sizeOptions">
+          <button class="size-btn" data-size="240" type="button">240p</button>
+          <button class="size-btn" data-size="360" type="button">360p</button>
+          <button class="size-btn is-active" data-size="480" type="button">480p</button>
+          <button class="size-btn" data-size="720" type="button">720p</button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-label">
           <span>video quality</span>
           <span class="setting-value" id="videoQValue">3 / 10</span>
         </div>
@@ -95,6 +107,7 @@
     <div class="configure-actions">
       <button class="btn" id="compressBtn" type="button">compress video</button>
       <button class="btn btn-ghost" id="cancelBtn" type="button">cancel</button>
+      <span class="estimate" id="estimate">est. ~0.0 MB</span>
     </div>
   </section>
 
